@@ -18,16 +18,13 @@ from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
 from nltk.stem.snowball import HungarianStemmer
 from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.stem.snowball import SnowballStemmer
 
-nltk.download('punkt')
+
 nltk.download('stopwords')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('tagsets')
-nltk.download('universal_tagset')
-nltk.download('words')
-nltk.download('maxent_ne_chunker')
-nltk.download('treebank')
-stop_words = set(stopwords.words('hungarian'))
+stemmer = SnowballStemmer("hungarian")
+stopwords = set(nltk.corpus.stopwords.words('hungarian'))
+
 
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextContainer
@@ -121,6 +118,22 @@ def _filter(txt : str):
 def get_questions(text :str, top_k : int):
     return sorted(_filter(text), key=_question_priority)[:top_k]
 
+#########################################################
+
+# Remove stopwords and stemming
+def clean_text(texts):
+    cleaned_texts = []
+    def _proc_sentence(t):
+            return [
+                stemmer.stem(token.lower()) for token in word_tokenize(t)
+                if token.lower() not in stopwords and len(token) > 1
+            ]
+    
+    for text in texts:
+        cleaned_texts.append([_proc_sentence(t) for t in sent_tokenize(text)])
+    cleaned_texts = [" ".join(item) for sublist in cleaned_texts for item in sublist]     
+    return cleaned_texts
+
 def get_content():
     # Load the knowledge base from a pdf
     all_pages_text = []
@@ -139,29 +152,22 @@ def get_content():
 
     # Get all the sentences
     sentences = sent_tokenize(all_pages_text)
- 
-    return sentences
+    cleaned_sentences = clean_text(sentences)
+    return sentences , cleaned_sentences
 
-
-
-def get_relevant(question, sentences):
+def get_relevant(question, sentences,cleaned_sentences):
     # Similarity search
     # Get the relevant sentences based on list of question
-    # stemmer_ss = SnowballStemmer("hungarian")   
-    # stemmed_sentences = []
-    # for sentence in sentences:
-    #     stemmed_sentence = [stemmer_ss.stem(word) for word in sentence]
-    #     stemmed_sentences.append(stemmed_sentence)  
 
-    # print(stemmed_sentences[:10])
-    # Vectorize sentences
-    tfidf = TfidfVectorizer(tokenizer=word_tokenize, stop_words=list(stop_words))
-    tfidf.fit(sentences)
+   # Vectorize sentences
+    tfidf = TfidfVectorizer(tokenizer=word_tokenize, stop_words=list(stopwords))
+    tfidf.fit(cleaned_sentences)
     # Vectorise questions
-    question_vector = tfidf.transform(question)
+    cleaned_question = clean_text(question)
+    question_vector = tfidf.transform(cleaned_question)
     # Vectorise sentences and get the similarities
-    sim_scores = tfidf.transform(sentences).dot(question_vector.T).toarray().ravel()
-    #print('sim_score:',sim_scores)
+    sim_scores = tfidf.transform(cleaned_sentences).dot(question_vector.T).toarray().ravel()
+    # print('sim_score:',sim_scores)
     # select the top  relevant sentences
     top_sentences = []
     for i in sorted(range(len(sim_scores)), key=lambda i: sim_scores[i], reverse=True):
@@ -170,12 +176,9 @@ def get_relevant(question, sentences):
     #print('top:',top_sentences)
     return top_sentences
 
-
-
-
-def get_response( head, questions,sentences, history):
+def get_response( head, questions,sentences, cleaned_sentences, history):
     chatbot_response = []
-    relevant_sentences = get_relevant(questions,sentences)
+    relevant_sentences = get_relevant(questions,sentences, cleaned_sentences)
     for question in questions :
         while True :
             try :
@@ -206,6 +209,38 @@ def get_response( head, questions,sentences, history):
         history.append({"role": "assistant", "content": f"{response_text}"})
     return chatbot_response
 
+def oget_response( head, question,sentences, cleaned_sentences, history):
+    chatbot_response = []
+    relevant_sentences = get_relevant(question,sentences, cleaned_sentences)
+    while True :
+        try :
+            message = head
+            message[0]['content'] = message[0]['content'].replace('<knowledge_base>'," ".join(relevant_sentences))
+            # message.extend(history[-3:])
+            message.append({"role": "user", "content": f"Ha szerepel a tudásbázisban akkor válaszolj: {question}, de csak a Tudásbázis alapján válaszolhatsz!Mást ne is mondj!"})
+            # Get the response from GPT-3
+            response = openai.ChatCompletion.create(
+                model=MODEL,
+                messages=message,
+                max_tokens=2048, 
+                stop=None,
+                temperature=0,
+                n = 1 # how many anwser to create?
+            )
+            break
+        except Exception as e:
+            print (type(e), e)
+            print("Clear history")
+            history = []
+        #print(response)
+        # Extract the response from the response object
+        response_text = response['choices'][0].strip()
+        chatbot_response.append({"role": "assistant", "content": f"{response_text}"})
+        # Add response as a history element
+        history.append({"role": "user", "content": f"{question}, de csak a Tudásbázis alapján válaszolhatsz!"})
+        history.append({"role": "assistant", "content": f"{response_text}"})
+    return chatbot_response
+
 #
 # CHAT mode
 #
@@ -215,7 +250,7 @@ def chat_mode():
             "content": "Legyél chatbot assistant \n\nTudásbázis:\n\n<knowledge_base>\n\n"},
         {"role": "user", "content": "A felhasználó neve áll a családi névből és az utónévből, egymás után írva"},
       ]
-    sentences = get_content()
+    sentences , cleaned_sentences = get_content()
     print('Sentence num:',len(sentences))
 
     while True:
@@ -223,7 +258,7 @@ def chat_mode():
         user_input = input("User: ")
         if user_input == "exit":
             break
-        chatbot_response = get_response( head, [user_input],sentences, history)
+        chatbot_response = get_response( head, [user_input],sentences, cleaned_sentences, history)
         print(f"Chatbot:{chatbot_response[0]['content']}\n-----------------")
 
 
@@ -236,47 +271,24 @@ def _get_email_text(msg):
     # Az alábbi példa csak visszaadja a teljes szöveget
     return msg.get_payload()
 
-def process_request(sentences,questions):
 
-    # Select relevat content
-    relevant_sentences = []
-    for question in questions:
-        for sentence in sentences:
-            # Ha a mondatban szerepel a kulcsszó, akkor hozzáadjuk a releváns mondatok listájához
-            if re.search(rf'\b{re.escape(question)}\b', sentence):
-                relevant_sentences.append(sentence)
-
-        # Join selected sentences to text
-        knowledge_base = ' '.join(relevant_sentences[:10]) # max the first 10
-        message = [{"role": "system", 
-                    "content": f"Legyél chatbot assistant \n\nTudásbázis:\n\n{knowledge_base}\n\n"},
-                ]
-
-        # ChatGPT-nél kérdezünk a releváns szövegrészre
-        response = openai.ChatCompletion.create(
-            model=MODEL,
-            messages=message,
-            max_tokens=2048, 
-            stop=None,
-            temperature=0,
-            n = 1 # how many anwser to create?
-        )
-        return response
-
-def read_unseen_mails(head, sentences, history):
-    # BConnect to thw mail server
+def read_unseen_mails(head, sentences, cleaned_sentences, history):
+    # BConnect to the mail server
     imap_host = IMAP_HOST
     imap_user = IMAP_USER
     imap_pass = IMAP_PASS
 
     imap = imaplib.IMAP4_SSL(imap_host)
+    print("login")
     imap.login(imap_user, imap_pass)
+    print("logged in")
     imap.select('INBOX')
 
     # Download unseen mails
-    status, messages = imap.search(None, 'UNSEEN')
-    messages = messages[0].split(b' ')
+    status, messages = imap.search(None, 'ALL') #'UNSEEN')
 
+    messages = messages[0].split(b' ')
+ 
     for mail in messages:
         # Adoenload one mail
         res, msg = imap.fetch(mail, '(RFC822)')
@@ -285,7 +297,6 @@ def read_unseen_mails(head, sentences, history):
             if isinstance(response, tuple):
                 # get the content and the headers
                 msg = email.message_from_bytes(response[1])
-
                 # Addresses
                 sender = msg['From']
                 recipient = msg['To']
@@ -293,14 +304,17 @@ def read_unseen_mails(head, sentences, history):
                 # Process the content
                 text = _get_email_text(msg)
                 questions= get_questions(text , top_k = MAX_QUESTION_TO_RESPONS)
-
-                response=  get_response( head, questions,sentences, history)
-                # Válasz e-mail összeállítása
+                chatbot_responses = []
+                for question in questions:
+                    response =  get_response( head, [question],sentences,  cleaned_sentences, history)
+                    chatbot_responses.append(response[0]['content'])
+                 # Válasz e-mail összeállítása
                 reply = email.message.EmailMessage()
                 reply['To'] = sender
                 reply['Subject'] = f"RE: {msg['Subject']}"
-                reply.set_content(f"Válaszom a levelére:{response} \n---------------------------\n{text}\n\n")
-
+                print(f"Válaszom a levelére:{' '.join(chatbot_responses)} \n---------------------------\n{text}\n\n")
+                reply.set_content(f"Válaszom a levelére:{' '.join(chatbot_responses)} \n---------------------------\n{text}\n\n")
+                print(reply)
                 # SMTP szerveren keresztül elküldi a választ
                 smtp_host = SMTP_HOST
                 smtp_port = SMTP_PORT
@@ -310,35 +324,30 @@ def read_unseen_mails(head, sentences, history):
                 with smtplib.SMTP(smtp_host, smtp_port) as server:
                     server.starttls()
                     server.login(smtp_user, smtp_pass)
-                    server.send_message(reply)
-                    print(f"Válasz elküldve a következő címre: {sender}")
+                    try:
+                        server.send_message(reply)
+                    except Exception as e :
+                        print (e)
+                print(f"Válasz elküldve a következő címre: {sender}")
 
 
 def email_handler_mode():
     history = []
     head = [{"role": "system", 
-            "content": "Legyél chatbot assistant \n\Tudásbázis:\n\n<knowledge_base>\n\n"},
+            "content": "Legyél supporter aki bejövő levelekre válaszol!\n\Tudásbázis:\n\n<knowledge_base>\n\n"},
         {"role": "user", "content": "A felhasználó neve áll a családi névből és az utónévből, egymás után írva"},
       ]
-    sentences = get_content()
+    sentences , cleaned_sentences = get_content()
+    print('Sentence num:',len(sentences))
     while True:
-       
-       read_unseen_mails(head, sentences, history)
+       read_unseen_mails(head, sentences, cleaned_sentences, history)
+       print("sleep")
        time.sleep(60)
  
-
-def test() :
-   sentences = get_content()
-   print('Sentences:',sentences)
-   relevant = get_relevant(['Mi a NN-Teladoc'],sentences)
-   print('Relevants:', relevant)
-
 
 
 if __name__ == "__main__":
  
-    # test()
-    # sys.exit()
     if MODE == "CHAT" :
         chat_mode()
     else :
