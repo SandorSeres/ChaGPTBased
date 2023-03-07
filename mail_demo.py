@@ -94,7 +94,8 @@ def _question_priority(question : str):
 # Filter out non-question sentences
 def _filter(txt : str):
     # Split the email into sentences
-    sentences = re.split('[.?!]', txt)
+    sentences = re.split('[\n.?!]', txt)
+    #sentences = sent_tokenize(txt)
     # Loop through each sentence and find the question words
     questions = []
     for sentence in sentences:
@@ -209,37 +210,6 @@ def get_response( head, questions,sentences, cleaned_sentences, history):
         history.append({"role": "assistant", "content": f"{response_text}"})
     return chatbot_response
 
-def oget_response( head, question,sentences, cleaned_sentences, history):
-    chatbot_response = []
-    relevant_sentences = get_relevant(question,sentences, cleaned_sentences)
-    while True :
-        try :
-            message = head
-            message[0]['content'] = message[0]['content'].replace('<knowledge_base>'," ".join(relevant_sentences))
-            # message.extend(history[-3:])
-            message.append({"role": "user", "content": f"Ha szerepel a tudásbázisban akkor válaszolj: {question}, de csak a Tudásbázis alapján válaszolhatsz!Mást ne is mondj!"})
-            # Get the response from GPT-3
-            response = openai.ChatCompletion.create(
-                model=MODEL,
-                messages=message,
-                max_tokens=2048, 
-                stop=None,
-                temperature=0,
-                n = 1 # how many anwser to create?
-            )
-            break
-        except Exception as e:
-            print (type(e), e)
-            print("Clear history")
-            history = []
-        #print(response)
-        # Extract the response from the response object
-        response_text = response['choices'][0].strip()
-        chatbot_response.append({"role": "assistant", "content": f"{response_text}"})
-        # Add response as a history element
-        history.append({"role": "user", "content": f"{question}, de csak a Tudásbázis alapján válaszolhatsz!"})
-        history.append({"role": "assistant", "content": f"{response_text}"})
-    return chatbot_response
 
 #
 # CHAT mode
@@ -248,7 +218,6 @@ def chat_mode():
     history = []
     head = [{"role": "system", 
             "content": "Legyél chatbot assistant \n\nTudásbázis:\n\n<knowledge_base>\n\n"},
-        {"role": "user", "content": "A felhasználó neve áll a családi névből és az utónévből, egymás után írva"},
       ]
     sentences , cleaned_sentences = get_content()
     print('Sentence num:',len(sentences))
@@ -310,10 +279,13 @@ def read_unseen_mails(head, sentences, cleaned_sentences, history):
                     chatbot_responses.append(response[0]['content'])
                  # Válasz e-mail összeállítása
                 reply = email.message.EmailMessage()
+                reply['From'] = "hello@code.hu"
                 reply['To'] = sender
                 reply['Subject'] = f"RE: {msg['Subject']}"
                 print(f"Válaszom a levelére:{' '.join(chatbot_responses)} \n---------------------------\n{text}\n\n")
-                reply.set_content(f"Válaszom a levelére:{' '.join(chatbot_responses)} \n---------------------------\n{text}\n\n")
+                s = "\n".join(chatbot_responses)
+                
+                reply.set_content(f"Válaszom a levelére:{s} \n Üdvözlettel\n Support\n---------------------------\n{text}\n\n")
                 print(reply)
                 # SMTP szerveren keresztül elküldi a választ
                 smtp_host = SMTP_HOST
@@ -326,6 +298,7 @@ def read_unseen_mails(head, sentences, cleaned_sentences, history):
                     server.login(smtp_user, smtp_pass)
                     try:
                         server.send_message(reply)
+                        #server.sendmail('hello@code.hu', sender, "Szia")
                     except Exception as e :
                         print (e)
                 print(f"Válasz elküldve a következő címre: {sender}")
@@ -334,8 +307,7 @@ def read_unseen_mails(head, sentences, cleaned_sentences, history):
 def email_handler_mode():
     history = []
     head = [{"role": "system", 
-            "content": "Legyél supporter aki bejövő levelekre válaszol!\n\Tudásbázis:\n\n<knowledge_base>\n\n"},
-        {"role": "user", "content": "A felhasználó neve áll a családi névből és az utónévből, egymás után írva"},
+            "content": "Csak a kérdésre válaszolj a Tudásbázis alapján!\n\Tudásbázis:\n\n<knowledge_base>\n\n"},
       ]
     sentences , cleaned_sentences = get_content()
     print('Sentence num:',len(sentences))
