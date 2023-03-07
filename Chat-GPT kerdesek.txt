@@ -1,0 +1,11 @@
+Meghatározható-e hogy mi lenne a chatbot szerepe?
+Levélre kell válaszolni (offline) vagy online kérdez felelek?
+Mekkora a context/knowledge base? (hány fájl és mekkorák egyesével)
+Milyen formában van meg? (txt, pdf, docx)
+Kell-e a sessionon belül emlékezni az előző kérdésre válaszra?
+van-e minta kérdés- felelek adat
+Van-e olyan adat amit keresünk, de a dokumentumokban csak darabokvban van (pl.: Családi név: S, Utónév: W, Kérdés: mia neve?
+meg kell-e adni a gondolatmenetet, hogy mi alapján jutott erre az eredményre?
+Van-e olyan eset amikor több lehetséges válaszból "majority vote" segítségével kell megadni a vélaszt.
+szüksges-e a védelem prompt injection ellen?
+
