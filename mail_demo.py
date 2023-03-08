@@ -302,7 +302,7 @@ def read_unseen_mails(head: List, sentences: List, cleaned_sentences: List, hist
                     reply['To'] = sender
                     reply['Subject'] = f"RE: {subject}"
                     s = "\n".join(chatbot_responses)
-                    reply.set_content(f"Válaszom a levelére:\n{s}\n\nÜdvözlettel,\nSupport")
+                    reply.set_content(f"Válaszom a levelére:\n{s} \n Üdvözlettel\n Support\n---------------------------\n{text}\n\n")
 
                     # Send the reply via SMTP server
                     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
@@ -330,11 +330,60 @@ def email_handler_mode():
        print("sleep")
        time.sleep(60)
  
+#
+# CONTROLLER mode
+#
+def controller_mode():
+    head = [{"role": "system", 
+            "content": """
+Válaszolj a kérdésre olyan formában, hogy kérés az okos otthon vezérlőhöz JSON formátumban lesz elküldve. A kérések a következő 4 kategóriába sorolandók:
+- "command": valamelyik kapcsoló állapotát változtatja meg. A JSON tartalmazza  következő propertiket: action, location, target, value, comment, scheduleTimeStamp.
+- "query' : kérdezze le az adott eszköz állapotát. A JSON tartalmazza  következő propertiket: action, location, target, value, property.
+
+A JSON válasz elemeinek magyarázata:
+Az "action" properti értékkészlete megegyezik a kérés kategóriájával: "command" , "query"
+A "location" properti az adott szoba nevét tartalmazza kisbetűkkel
+A "target" properti lehet: "lámpa" , "termosztát" , "redőny" kisbetűkkel
+A "command" esetén a "scheduleTimeStamp" a mostani időhöz késleltetett időpontot tartalmazzon teljes dátum és tidő megjelöléssel
+Az okos otthon propertiei:
+- helységek: konyha, nappali, hálószoba, fűrdő , folyosó, WC
+- kapcsolni tudja minden helységben a villanykapcsolókat, le tudja kérdezni az állapotukat
+- vezérelni tudja a termosztátokat minden helységben.
+
+A válaszod csak a JSON legyen semmi más
+"""},
+      ]
+    while True:
+        #print("history:", history)
+        user_input = input("User: ")
+        if user_input == "exit":
+            break
+        try:
+            message = head.copy()
+            message.append({"role": "user", "content": user_input})
+            # Get the response from GPT-3
+            response = openai.ChatCompletion.create(
+                model=MODEL,
+                messages=message,
+                max_tokens=2048,
+                stop=None,
+                temperature=0,
+                n=1  # how many answer to create?
+            )
+        except Exception as e:
+            print(f"Error occurred while getting response: {type(e).__name__} - {str(e)}")
+        response_text = response['choices'][0].message['content'].strip()
+        print(f"Controller:{response_text}\n-----------------")
+
+
 
 
 if __name__ == "__main__":
  
     if MODE == "CHAT" :
         chat_mode()
-    else :
+    elif  MODE == "MAILHANDLER" :
         email_handler_mode()
+    elif  MODE == "CONTROLLER" :
+        controller_mode()
+    
