@@ -177,6 +177,58 @@ def clean_text(texts):
     return cleaned_texts
 
 
+def content_uploader_chank_by_chank() :
+    uploader_message =    """Act like a document/text loader until you load and remember content of the next text/s or document/s.
+There might be multiple files, each file is marked by name in the format ### DOCUMENT NAME.
+I will send you them by chunks. Each chunk start will be noted as [START CHUNK x],
+and end of this chunk will be noted as [END CHUNK x],
+where x is number of current chunk .
+I will send you multiple messages with chunks, for each message just reply OK: [CHUNK x], don't reply anything else, don't explain the text!
+Let's begin:
+        """
+   
+    with open(KNOWLEDGE_BASE, 'rb') as file:
+        pages = extract_pages(file)
+        for i, page_layout in enumerate(pages):
+            page_text = ""
+
+            for element in page_layout:
+                if isinstance(element, LTTextContainer):
+                    page_text += element.get_text().strip() + " "
+            if i == 0 :
+                msg =[{"role": "user", "content": uploader_message}]
+                msg.append({"role": "user", "content": f"### {KNOWLEDGE_BASE} \n"})
+                msg.append({"role": "user", "content": f"[START CHUNK {i}] {page_text} [END CHUNK {i}]"})
+            else:
+                msg= [{"role": "user", "content": f"[START CHUNK {i}] {page_text} [END CHUNK {i}]"}]
+            try :
+                response = openai.ChatCompletion.create(
+                    model=MODEL,
+                    messages=msg,
+                    max_tokens=2048,
+                    stop=None,
+                    temperature=0,
+                    n=1  # how many answer to create?
+                )
+                print(response['choices'][0].message['content'].strip(),"\n")
+            except Exception as e:
+                print(e)
+    msg= [{"role": "user", "content": "Mi található az Adatok fülön ?"}]
+    response = openai.ChatCompletion.create(
+        model=MODEL,
+        messages=msg,
+        max_tokens=2048,
+        stop=None,
+        temperature=0,
+        n=1  # how many answer to create?
+    )
+    print("========================================","\n")
+    print(response['choices'][0].message['content'].strip(),"\n")
+
+
+
+ 
+    
 def get_content():
     """
     Load the knowledge base from a PDF file, clean the text, and return the original and cleaned sentences.
@@ -582,9 +634,12 @@ Minta: a wc villany bekapcsolása
 
 
 
+import sys
 
 if __name__ == "__main__":
  
+    content_uploader_chank_by_chank()
+    sys.exit()
     if MODE == "CHAT" :
         chat_mode()
     elif  MODE == "MAILHANDLER" :
