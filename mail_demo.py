@@ -333,7 +333,8 @@ def chat_mode():
             "content": "Legyél chatbot assistant \n\nTudásbázis:\n\n<knowledge_base>\n\n"},
       ]
     sentences , cleaned_sentences = get_content()
-    logger.info('Sentence num in KnowledgeBase:',len(sentences))
+    logger.info(f'Sentence num in KnowledgeBase:{len(sentences)}')
+    
 
     while True:
         #print("history:", history)
@@ -425,6 +426,14 @@ def get_webcontent(query,num_of_results):
     return sentences, cleaned_sentences
 
 
+    """I will ask you questions based on the following context:
+— Start of Context —
+
+YOUR DOCUMENT CONTENT
+
+— End of Context—
+My question is: “What features do users want to see in the app?”
+    """
 def websearch_mode():
     history = []
     head = [{"role": "system", 
@@ -638,8 +647,8 @@ import sys
 
 if __name__ == "__main__":
  
-    content_uploader_chank_by_chank()
-    sys.exit()
+    # content_uploader_chank_by_chank()
+    # sys.exit()
     if MODE == "CHAT" :
         chat_mode()
     elif  MODE == "MAILHANDLER" :

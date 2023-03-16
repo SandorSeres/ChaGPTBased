@@ -1,6 +1,11 @@
 python-dotenv
+python3-dev
 nltk
-openai
 pdfminer.six
 SpeechRecognition
 PyAudio
+google
+ffmpeg-python
+openai-whisper
+openai
+google.colab
